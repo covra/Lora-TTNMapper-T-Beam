@@ -5,13 +5,30 @@
 // UPDATE the config.h file in the same folder WITH YOUR TTN KEYS AND ADDR.
 #include "config.h"
 #include "gps.h"
+#include "CayenneLPP.h"
+
+//Cayenne Code. Si la salida de datos a TTN va a ser en formato CayenneLPP ,
+//CAYENNELPP_OUT_DATA 1 , si se va a decodificar personalmente poner a 0
+#define CAYENNELPP_OUT_DATA 1
+
+//#if CAYENNELPP_OUT_DATA == 1
+//#include "CayenneLPP.h"
+//#endif
 
 // T-Beam specific hardware
 #define BUILTIN_LED 21
 
+//Other configs
+#define TX_INTERVAL_SEC 90 //Intervalo de transmision Tx (tener en cuenta el duty cicle)
+
 char s[32]; // used to sprintf for Serial output
 uint8_t txBuffer[9];
-gps gps;
+//#if CAYENNELPP_OUT_DATA == 1
+uint8_t lppBuffer[11]; //buffer para cayennelpp gps payload
+//#endif
+
+gps gps; //instanciado de la clase gps
+CayenneLPP lpp(51); //instanciado de la clase CayenneLPP, el size=51 aun no se que es
 
 // These callbacks are only used in over-the-air activation, so they are
 // left empty here (we cannot leave them out completely unless
@@ -22,7 +39,7 @@ void os_getDevKey (u1_t* buf) { }
 
 static osjob_t sendjob;
 // Schedule TX every this many seconds (might become longer due to duty cycle limitations).
-const unsigned TX_INTERVAL = 30;
+const unsigned TX_INTERVAL = TX_INTERVAL_SEC;
 
 // Pin mapping
 const lmic_pinmap lmic_pins = {
@@ -101,7 +118,7 @@ void onEvent (ev_t ev) {
   }
 }
 
-void do_send(osjob_t* j) {  
+void do_send(osjob_t* j) {
 
   // Check if there is not a current TX/RX job running
   if (LMIC.opmode & OP_TXRXPEND)
@@ -109,14 +126,48 @@ void do_send(osjob_t* j) {
     Serial.println(F("OP_TXRXPEND, not sending"));
   }
   else
-  { 
+  {
     if (gps.checkGpsFix())
     {
       // Prepare upstream data transmission at the next possible time.
+
+      //Preparacion de paquete CayenneLPP
+     
+      #if CAYENNELPP_OUT_DATA == 1
+      Serial.println(F("Tipo dato de salida: CayenneLPP"));
+      Serial.println(F("Reset buffer serial GPS"));
+      lpp.reset();
+      Serial.println(F("Preparacion del paquete"));
+      //lpp.addGPS(1,39.56715,-0.28117,2);  //prueba debug
+      float LatitudeBinaryC = gps.getLatitude();
+      float LongitudeBinaryC = gps.getLongitude();
+      float altitudeGpsC = gps.getAltitude();
+      float hdopGpsC;
+      gps.buildClppPacket(); //creacion del paquete CayenneLPP
+      Serial.println("**********Paquete LPP construido************");
+      Serial.println(LatitudeBinaryC);
+      Serial.println(LongitudeBinaryC);
+      Serial.println(altitudeGpsC);
+      Serial.println(hdopGpsC);
+      Serial.println("*********************************************");
+      lpp.addGPS(1, LatitudeBinaryC, LongitudeBinaryC, altitudeGpsC); //[canal de CayenneAPI][latitud][longitud][altura]
+      Serial.println(F("Conversion a CayenneLPP"));
+      lpp.copy(lppBuffer); //problema aqui, creo q por el puntero * puntero quitado
+      Serial.println(F("Integracion CayenneLPP en LoRaWan"));
+      LMIC_setTxData2(1, lppBuffer, sizeof(lppBuffer), 0);
+      Serial.println(F("CayenneLPP Packet queued"));
+      digitalWrite(BUILTIN_LED, HIGH);
+      #endif
+
+     //Preparacion del paquete TTN
+      #if CAYENNELPP_OUT_DATA == 0
+      Serial.println(F("Tipo dato de salida: TTN"));
       gps.buildPacket(txBuffer);
       LMIC_setTxData2(1, txBuffer, sizeof(txBuffer), 0);
-      Serial.println(F("Packet queued"));
+      Serial.println(F("TTN Packet queued"));
       digitalWrite(BUILTIN_LED, HIGH);
+      #endif
+
     }
     else
     {
@@ -130,9 +181,9 @@ void do_send(osjob_t* j) {
 void setup() {
   Serial.begin(115200);
   Serial.println(F("TTN Mapper"));
-  
+
   //Turn off WiFi and Bluetooth
-  WiFi.mode(WIFI_OFF);
+  WiFi.mode(WIFI_OFF);  //no funciona , error wifi_off not declared in scope
   btStop();
   gps.init();
 
@@ -140,18 +191,19 @@ void setup() {
   os_init();
   // Reset the MAC state. Session and pending data transfers will be discarded.
   LMIC_reset();
-  
+
   LMIC_setSession (0x1, DEVADDR, NWKSKEY, APPSKEY);
-  
-  LMIC_setupChannel(0, 868100000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
-  LMIC_setupChannel(1, 868300000, DR_RANGE_MAP(DR_SF12, DR_SF7B), BAND_CENTI);      // g-band
-  LMIC_setupChannel(2, 868500000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
-  LMIC_setupChannel(3, 867100000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
-  LMIC_setupChannel(4, 867300000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
-  LMIC_setupChannel(5, 867500000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
-  LMIC_setupChannel(6, 867700000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
-  LMIC_setupChannel(7, 867900000, DR_RANGE_MAP(DR_SF12, DR_SF7),  BAND_CENTI);      // g-band
-  LMIC_setupChannel(8, 868800000, DR_RANGE_MAP(DR_FSK,  DR_FSK),  BAND_MILLI);      // g2-band
+
+  //Hackeada la lista de canales y los valores de SF para single channel
+  LMIC_setupChannel(0, 868100000, DR_RANGE_MAP(DR_SF9, DR_SF9),  BAND_CENTI);      // g-band
+  LMIC_setupChannel(1, 868100000, DR_RANGE_MAP(DR_SF9, DR_SF9), BAND_CENTI);      // g-band
+  LMIC_setupChannel(2, 868100000, DR_RANGE_MAP(DR_SF9, DR_SF9),  BAND_CENTI);      // g-band
+  LMIC_setupChannel(3, 868100000, DR_RANGE_MAP(DR_SF9, DR_SF9),  BAND_CENTI);      // g-band
+  LMIC_setupChannel(4, 868100000, DR_RANGE_MAP(DR_SF9, DR_SF9),  BAND_CENTI);      // g-band
+  LMIC_setupChannel(5, 868100000, DR_RANGE_MAP(DR_SF9, DR_SF9),  BAND_CENTI);      // g-band
+  LMIC_setupChannel(6, 868100000, DR_RANGE_MAP(DR_SF9, DR_SF9),  BAND_CENTI);      // g-band
+  LMIC_setupChannel(7, 868100000, DR_RANGE_MAP(DR_SF9, DR_SF9),  BAND_CENTI);      // g-band
+  LMIC_setupChannel(8, 868100000, DR_RANGE_MAP(DR_FSK,  DR_FSK),  BAND_MILLI);      // g2-band
 
   // Disable link check validation
   LMIC_setLinkCheckMode(0);
@@ -160,14 +212,16 @@ void setup() {
   LMIC.dn2Dr = DR_SF9;
 
   // Set data rate and transmit power for uplink (note: txpow seems to be ignored by the library)
-  LMIC_setDrTxpow(DR_SF7,14); 
+  LMIC_setDrTxpow(DR_SF9,14);
 
   do_send(&sendjob);
   pinMode(BUILTIN_LED, OUTPUT);
   digitalWrite(BUILTIN_LED, LOW);
-  
+
 }
 
 void loop() {
     os_runloop_once();
+
+
 }
