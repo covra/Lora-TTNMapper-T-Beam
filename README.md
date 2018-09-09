@@ -53,11 +53,10 @@ Let me know if more detailed instructions are needed.
 
 ## Todolist
 
-* ~~Stop sending data to TTN until the GPS get a fix.~~ <== Done thanks to [@Roeland54](https://github.com/Roeland54)
-* Manage and document the different T-Beam revisions/versions.
-* Switch to OTAA auth method for TTN and save the 'credentials' for reboot use.
+* ~~Stop sending data to TTN until the GPS get a fix.~~
 * Save and reload the frame counter somewhere - GPS RTC data ? SPIFFS ? EEPROM ? - so I can check the "Frame Counter Checks" box as recommended on TTN.
 * Also save the GPS 'status' so that on next boot it gets a fix faster.
+* Switch to OTAA auth method for TTN and save the 'credentials' for reboot use.
 * Reduce the power needed ! That thing is a power hog currently, we need to make it sleep most of the time as possible.
 * Adapt the data send frequency based on current velocity : When not moving, an update per hour should be enough.
 

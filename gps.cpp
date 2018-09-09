@@ -9,7 +9,7 @@ void gps::init()
 }
 
 void gps::encode()
-{       
+{
     int data;
     int previousMillis = millis();
 
@@ -24,18 +24,64 @@ void gps::encode()
     }
      //Serial.println("");
 }
+float gps::getLatitude()
+{
+  float LatitudeBinaryC = tGps.location.lat();
+  return LatitudeBinaryC;
+}
+float gps::getLongitude()
+{
+  float LongitudeBinaryC = tGps.location.lng();
+  return LongitudeBinaryC;
+}
+float gps::getAltitude()
+{
+  float altitudeGpsC = tGps.altitude.meters();
+  return altitudeGpsC;
+}
+void gps::buildClppPacket ()
+{
+  float LatitudeBinaryC = tGps.location.lat();
+  float LongitudeBinaryC = tGps.location.lng();
+  float altitudeGpsC = tGps.altitude.meters();
+  float hdopGpsC = tGps.hdop.value();
+
+  sprintf(t, "Lat: %f", tGps.location.lat());
+  Serial.println(t);
+  sprintf(t, "Lng: %f", tGps.location.lng());
+  Serial.println(t);
+
+  Serial.print("Latitude  : ");
+  Serial.println(tGps.location.lat(), 5);
+  Serial.print("Longitude : ");
+  Serial.println(tGps.location.lng(), 4);
+  Serial.print("Satellites: ");
+  Serial.println(tGps.satellites.value());
+  Serial.print("Altitude  : ");
+  Serial.print(tGps.altitude.feet() / 3.2808);
+  Serial.println("M");
+  Serial.print("Time      : ");
+  Serial.print(tGps.time.hour());
+  Serial.print(":");
+  Serial.print(tGps.time.minute());
+  Serial.print(":");
+  Serial.println(tGps.time.second());
+  Serial.println("**********************");
+
+
+}
 
 void gps::buildPacket(uint8_t txBuffer[9])
 {
   LatitudeBinary = ((tGps.location.lat() + 90) / 180.0) * 16777215;
   LongitudeBinary = ((tGps.location.lng() + 180) / 360.0) * 16777215;
-  
+
   sprintf(t, "Lat: %f", tGps.location.lat());
   Serial.println(t);
-  
+
   sprintf(t, "Lng: %f", tGps.location.lng());
   Serial.println(t);
-  
+
   txBuffer[0] = ( LatitudeBinary >> 16 ) & 0xFF;
   txBuffer[1] = ( LatitudeBinary >> 8 ) & 0xFF;
   txBuffer[2] = LatitudeBinary & 0xFF;
@@ -55,12 +101,12 @@ void gps::buildPacket(uint8_t txBuffer[9])
 bool gps::checkGpsFix()
 {
   encode();
-  if (tGps.location.isValid() && 
+  if (tGps.location.isValid() &&
       tGps.location.age() < 2000 &&
       tGps.hdop.isValid() &&
       tGps.hdop.value() <= 300 &&
       tGps.hdop.age() < 2000 &&
-      tGps.altitude.isValid() && 
+      tGps.altitude.isValid() &&
       tGps.altitude.age() < 2000 )
   {
     Serial.println("Valid gps Fix.");

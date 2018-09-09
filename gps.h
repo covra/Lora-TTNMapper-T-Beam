@@ -13,6 +13,10 @@ class gps
         void init();
         bool checkGpsFix();
         void buildPacket(uint8_t txBuffer[9]);
+        float getLatitude ();
+        float getLongitude ();
+        float getAltitude ();
+        void buildClppPacket();        
         void encode();
 
     private:
@@ -20,7 +24,8 @@ class gps
         uint16_t altitudeGps;
         uint8_t hdopGps;
         char t[32]; // used to sprintf for Serial output
-        TinyGPSPlus tGps;
+        TinyGPSPlus tGps; 
+
 };
 
 #endif
